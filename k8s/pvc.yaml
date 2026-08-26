@@ -1,0 +1,15 @@
+# PersistentVolumeClaim for model checkpoints, shared between the training Job
+# (writes the trained model) and the serving Deployment (reads it). Uses the
+# default 'standard' StorageClass that Minikube provisions.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-checkpoints-pvc
+  labels:
+    app: mlops-pipeline
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
