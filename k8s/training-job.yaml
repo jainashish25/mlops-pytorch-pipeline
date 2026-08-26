@@ -1,0 +1,51 @@
+# GPU training Job: runs src/train.py once to completion on the GPU, mounting
+# the ConfigMap (hyperparameters) and the PVC (to persist the checkpoint).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cifar10-training
+  labels:
+    app: mlops-pipeline
+    component: training
+spec:
+  backoffLimit: 2            # retry up to 2 times on failure
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: mlops-pipeline
+        component: training
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: trainer
+          image: mlops-train:v1
+          imagePullPolicy: IfNotPresent   # use the locally built image
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+              nvidia.com/gpu: "1"         # request one GPU
+            limits:
+              cpu: "4"
+              memory: 8Gi
+              nvidia.com/gpu: "1"         # GPUs must be equal in requests/limits
+          env:
+            - name: CONFIG_PATH
+              value: /app/configs/training_config.yaml
+          volumeMounts:
+            - name: config-volume
+              mountPath: /app/configs
+            - name: checkpoint-volume
+              mountPath: /app/checkpoints
+            - name: data-volume
+              mountPath: /app/data
+      volumes:
+        - name: config-volume
+          configMap:
+            name: training-config
+        - name: checkpoint-volume
+          persistentVolumeClaim:
+            claimName: model-checkpoints-pvc
+        - name: data-volume
+          emptyDir: {}                    # CIFAR-10 downloaded fresh into the pod
