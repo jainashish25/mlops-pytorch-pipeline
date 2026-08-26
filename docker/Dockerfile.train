@@ -1,0 +1,51 @@
+# syntax=docker/dockerfile:1
+# =============================================================================
+# Dockerfile.train  —  GPU (CUDA 12.1) multi-stage training image
+# =============================================================================
+# Build:  docker build -f docker/Dockerfile.train -t mlops-train:v1 .
+# Run:    docker run --rm --gpus all \
+#             -v $(pwd)/data:/app/data \
+#             -v $(pwd)/checkpoints:/app/checkpoints \
+#             mlops-train:v1
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage 1: base — Python + pinned deps on the CUDA 12.1 runtime image.
+# We use Ubuntu 22.04's stock Python 3.10 (the training code has no 3.11-only
+# features), which avoids external PPAs and keeps the build self-contained.
+# -----------------------------------------------------------------------------
+FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04 AS base
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 python3-pip python3-dev && \
+    ln -sf /usr/bin/python3 /usr/local/bin/python && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install pinned dependencies. torch/torchvision come from the CUDA 12.1 wheel
+# index; the rest resolve from PyPI.
+COPY requirements/train.txt .
+RUN python -m pip install --upgrade pip && \
+    python -m pip install --no-cache-dir \
+        --extra-index-url https://download.pytorch.org/whl/cu121 \
+        -r train.txt
+
+# -----------------------------------------------------------------------------
+# Stage 2: training — copy only the source + config on top of base.
+# Keeping this separate means code changes rebuild only this small layer, not
+# the large dependency layer.
+# -----------------------------------------------------------------------------
+FROM base AS training
+
+COPY src/ ./src/
+COPY configs/ ./configs/
+
+ENV PYTHONUNBUFFERED=1 \
+    CONFIG_PATH=/app/configs/training_config.yaml
+
+ENTRYPOINT ["python", "src/train.py"]
