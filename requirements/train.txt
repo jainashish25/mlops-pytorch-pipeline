@@ -1,0 +1,8 @@
+# Training dependencies (pinned) — GPU build.
+# torch/torchvision are installed from the CUDA 12.1 index in Dockerfile.train
+# (--index-url https://download.pytorch.org/whl/cu121), so they are listed here
+# without the +cu121 local tag to keep the file index-agnostic.
+torch==2.5.1
+torchvision==0.20.1
+pyyaml==6.0.2
+numpy==2.1.3
