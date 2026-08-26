@@ -1,0 +1,15 @@
+# Keep large / irrelevant paths out of the Docker build context.
+data/
+checkpoints/
+*.pt
+*.pth
+.git/
+.github/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+tests/
+*.md
+k8s/
