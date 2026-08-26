@@ -1,0 +1,19 @@
+# Service exposing the serving Deployment. NodePort so it is reachable from the
+# host via `minikube service` for end-to-end testing.
+apiVersion: v1
+kind: Service
+metadata:
+  name: cifar10-serving
+  labels:
+    app: mlops-pipeline
+    component: serving
+spec:
+  type: NodePort
+  selector:
+    app: mlops-pipeline
+    component: serving
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      nodePort: 30080

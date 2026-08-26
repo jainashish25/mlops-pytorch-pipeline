@@ -1,0 +1,74 @@
+# Serving Deployment: runs the FastAPI inference server. 2 replicas for
+# availability, with liveness + readiness probes on /health and a rolling-update
+# strategy for zero-downtime deploys.
+#
+# DESIGN NOTE — single-GPU node: the cluster has one physical GPU (RTX 3060).
+# We reserve it for the training Job (where GPU acceleration matters and the
+# bonus applies) and run the 2 serving replicas on CPU. Inference for one
+# ResNet-18 on 32x32 images is sub-millisecond on CPU, so this costs nothing at
+# serving time and avoids GPU contention (2 GPU-requesting replicas could not
+# both schedule on a 1-GPU node). To serve on GPU instead, add
+# `nvidia.com/gpu: "1"` below and scale replicas to 1, or enable GPU
+# time-slicing in the device plugin.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cifar10-serving
+  labels:
+    app: mlops-pipeline
+    component: serving
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0     # never drop below desired count during a rollout
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: mlops-pipeline
+      component: serving
+  template:
+    metadata:
+      labels:
+        app: mlops-pipeline
+        component: serving
+    spec:
+      containers:
+        - name: server
+          image: mlops-serve:v1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: "500m"
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          env:
+            - name: CHECKPOINT_PATH
+              value: /app/checkpoints/classifier_v1.pt
+          readinessProbe:          # gate traffic until the model is loaded
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:           # restart the pod if it wedges
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 3
+          volumeMounts:
+            - name: checkpoint-volume
+              mountPath: /app/checkpoints
+              readOnly: true
+      volumes:
+        - name: checkpoint-volume
+          persistentVolumeClaim:
+            claimName: model-checkpoints-pvc

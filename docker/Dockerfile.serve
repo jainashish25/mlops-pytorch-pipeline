@@ -1,0 +1,60 @@
+# syntax=docker/dockerfile:1
+# =============================================================================
+# Dockerfile.serve  —  GPU (CUDA 12.1) model-serving image
+# =============================================================================
+# Build:  docker build -f docker/Dockerfile.serve -t mlops-serve:v1 .
+# Run:    docker run --rm -p 8080:8080 \
+#             -v $(pwd)/checkpoints:/app/checkpoints \
+#             mlops-serve:v1
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage 1: base — inference dependencies only (no training/telemetry libs).
+# Uses Ubuntu 22.04 stock Python 3.10 (no external PPA needed).
+# -----------------------------------------------------------------------------
+FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04 AS base
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 python3-pip python3-dev curl && \
+    ln -sf /usr/bin/python3 /usr/local/bin/python && \
+    rm -rf /var/lib/apt/lists/*
+# (curl is kept — the HEALTHCHECK uses it.)
+
+WORKDIR /app
+
+COPY requirements/serve.txt .
+RUN python -m pip install --upgrade pip && \
+    python -m pip install --no-cache-dir \
+        --extra-index-url https://download.pytorch.org/whl/cu121 \
+        -r serve.txt
+
+# -----------------------------------------------------------------------------
+# Stage 2: serving — copy source, create a non-root user, expose + healthcheck.
+# -----------------------------------------------------------------------------
+FROM base AS serving
+
+# Non-root user (Part C requirement).
+RUN useradd --create-home --uid 10001 appuser
+
+COPY src/ ./src/
+RUN mkdir -p /app/checkpoints && chown -R appuser:appuser /app
+
+USER appuser
+
+ENV CHECKPOINT_PATH=/app/checkpoints/classifier_v1.pt \
+    PYTHONUNBUFFERED=1
+
+EXPOSE 8080
+
+# Container-level healthcheck hitting the app's /health endpoint.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD curl -fsS http://localhost:8080/health || exit 1
+
+# uvicorn serves the FastAPI app; --app-dir src puts src/ on the import path so
+# serve.py's `from dataset import ...` / `from model import ...` resolve.
+CMD ["python", "-m", "uvicorn", "serve:app", "--app-dir", "src", \
+     "--host", "0.0.0.0", "--port", "8080"]
