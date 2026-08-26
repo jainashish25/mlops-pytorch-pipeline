@@ -146,3 +146,41 @@ kubectl get hpa
 ```bash
 pytest -v          # model factory + output-shape tests (also run in CI)
 ```
+
+## Validation
+
+End-to-end validation of the deployed pipeline (full terminal log in
+[`docs/complete-terminal-run.txt`](docs/complete-terminal-run.txt)).
+
+### 1. GPU schedulable on the node
+The cluster advertises the GPU as an allocatable resource.
+
+![GPU node allocatable](docs/screenshots/01-gpu-node-allocatable.png)
+
+### 2. GPU training — device cuda, 10 epochs
+The training Job runs on the GPU (`"device": "cuda"`) and trains to
+**val_accuracy 0.8604**.
+
+![Training logs on CUDA](docs/screenshots/02-training-logs-cuda.png)
+
+### 3. Training Job running
+![Training job running](docs/screenshots/03-training-job-running.png)
+
+### 4. Training complete, serving replicas ready
+The training pod reaches `Completed`; both serving replicas are `1/1`.
+
+![Pods: training done, serving ready](docs/screenshots/04-pods-training-done-serving-ready.png)
+
+### 5. Health endpoint
+![Health endpoint](docs/screenshots/05-health-endpoint.png)
+
+### 6. Autoscaling (HPA)
+The HorizontalPodAutoscaler tracks CPU and manages 2–6 replicas.
+
+![HPA autoscaler](docs/screenshots/06-hpa-autoscaler.png)
+
+### 7. Inference — /predict
+A dog image returns `cat` (0.565) and `dog` (0.419) as the top two classes,
+consistent with CIFAR-10 cat/dog confusion at ~86% accuracy.
+
+![Predict response](docs/screenshots/07-predict-response.png)
